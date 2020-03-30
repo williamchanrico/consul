@@ -123,6 +123,8 @@ type Msg struct {
 	Answer   []RR       // Holds the RR(s) of the answer section.
 	Ns       []RR       // Holds the RR(s) of the authority section.
 	Extra    []RR       // Holds the RR(s) of the additional section.
+
+	ForceRecursor bool
 }
 
 // ClassToString is a maps Classes to strings for each CLASS wire type.

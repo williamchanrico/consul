@@ -248,6 +248,11 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 	m.Authoritative = true
 	m.RecursionAvailable = (len(d.recursors) > 0)
 
+	// williamchanrico/consul@v1.0.0 fork
+	// if nothing found locally, recurse even if it's consul domain
+	// note: this behavior is a very specific use-case I need
+	m.ForceRecursor = false
+
 	switch req.Question[0].Qtype {
 	case dns.TypeSOA:
 		ns, glue := d.nameservers(req.IsEdns0() != nil)
@@ -267,6 +272,15 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 
 	default:
 		d.dispatch(network, req, m)
+	}
+
+	// williamchanrico/consul@v1.0.0 fork
+	// if nothing found locally, recurse even if it's consul domain
+	// note: this behavior is a very specific use-case I need
+	if m.ForceRecursor {
+		d.logger.Printf("[DEBUG] dns: williamchanrico/consul fork: force recursor")
+		d.handleRecurse(resp, req)
+		return
 	}
 
 	// Handle EDNS
@@ -795,8 +809,14 @@ func (d *DNSServer) serviceLookup(network, datacenter, service, tag string, req,
 
 	// If we have no nodes, return not found!
 	if len(out.Nodes) == 0 {
-		d.addSOA(resp)
-		resp.SetRcode(req, dns.RcodeNameError)
+		// williamchanrico/consul@v1.0.0 fork
+		// if nothing found locally, recurse even if it's consul domain
+		// note: this behavior is a very specific use-case I need
+
+		d.logger.Printf("[DEBUG] dns: williamchanrico/consul fork: calling serviceLookup: no nodes, set force recursor")
+		resp.ForceRecursor = true
+		// d.addSOA(resp)
+		// resp.SetRcode(req, dns.RcodeNameError)
 		return
 	}
 
@@ -833,7 +853,7 @@ func (d *DNSServer) serviceLookup(network, datacenter, service, tag string, req,
 
 	// If the answer is empty and the response isn't truncated, return not found
 	if len(resp.Answer) == 0 && !resp.Truncated {
-		d.addSOA(resp)
+		// d.addSOA(resp)
 		return
 	}
 }
@@ -1082,6 +1102,17 @@ func (d *DNSServer) handleRecurse(resp dns.ResponseWriter, req *dns.Msg) {
 			// response was compressed or not, so by not compressing
 			// we might generate an invalid packet on the way out.
 			r.Compress = !d.disableCompression.Load().(bool)
+
+			// williamchanrico/consul@v1.0.0 fork
+			// before forwarding the response, force ttl to zero
+			// note: this behavior is a very specific use-case I need
+			d.logger.Printf("[DEBUG] dns: williamchanrico/consul fork: disable any ttl when using recursor: %+v\n", r.Answer)
+			for i := 0; i < len(r.Answer); i++ {
+				if r.Answer[i] == nil {
+					continue
+				}
+				r.Answer[i].Header().Ttl = 0
+			}
 
 			// Forward the response
 			d.logger.Printf("[DEBUG] dns: recurse RTT for %v (%v)", q, rtt)
