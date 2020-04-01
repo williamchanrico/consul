@@ -800,11 +800,19 @@ func (d *DNSServer) lookupServiceNodes(datacenter, service, tag string) (structs
 
 // serviceLookup is used to handle a service query
 func (d *DNSServer) serviceLookup(network, datacenter, service, tag string, req, resp *dns.Msg) {
-	out, err := d.lookupServiceNodes(datacenter, service, tag)
-	if err != nil {
-		d.logger.Printf("[ERR] dns: rpc error: %v", err)
-		resp.SetRcode(req, dns.RcodeServerFailure)
-		return
+	var err error
+
+	// williamchanrico/consul@v1.0.0 fork
+	// if datacenter is not the local default, we will handle it on recursor
+	// note: this behavior is a very specific use-case I need
+	out := structs.IndexedCheckServiceNodes{}
+	if datacenter == d.agent.config.Datacenter {
+		out, err = d.lookupServiceNodes(datacenter, service, tag)
+		if err != nil {
+			d.logger.Printf("[ERR] dns: rpc error: %v", err)
+			resp.SetRcode(req, dns.RcodeServerFailure)
+			return
+		}
 	}
 
 	// If we have no nodes, return not found!

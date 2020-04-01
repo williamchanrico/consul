@@ -17,7 +17,7 @@ GOARCH=$(shell go env GOARCH)
 # Get the git commit
 GIT_COMMIT=$(shell git rev-parse --short HEAD)
 GIT_DIRTY=$(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
-GIT_DESCRIBE="v1.0.0-williamchanrico-fork-tkpd-custom-dns-1"
+GIT_DESCRIBE="v1.0.0-williamchanrico-fork-tkpd-custom-dns-2"
 GIT_IMPORT=github.com/hashicorp/consul/version
 GOLDFLAGS=-X $(GIT_IMPORT).GitCommit=$(GIT_COMMIT)$(GIT_DIRTY) -X $(GIT_IMPORT).GitDescribe=$(GIT_DESCRIBE)
 
