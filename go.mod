@@ -86,3 +86,5 @@ require (
 )
 
 replace istio.io/gogo-genproto v0.0.0-20190124151557-6d926a6e6feb => github.com/istio/gogo-genproto v0.0.0-20190124151557-6d926a6e6feb
+
+replace github.com/miekg/dns v1.1.26 => github.com/williamchanrico/dns v1.1.26-williamchanrico-fork-custom-dns-behavior

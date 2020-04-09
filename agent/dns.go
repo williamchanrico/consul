@@ -442,6 +442,10 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 	m.Authoritative = true
 	m.RecursionAvailable = (len(cfg.Recursors) > 0)
 
+	// williamchanrico/consul@v1.7.2 fork
+	// to force recursor on NXDOMAIN regardless of consul domain
+	m.ForceRecursor = false
+
 	ecsGlobal := true
 
 	switch req.Question[0].Qtype {
@@ -463,6 +467,14 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 
 	default:
 		ecsGlobal = d.dispatch(network, resp.RemoteAddr(), req, m)
+	}
+	// williamchanrico/consul@1.7.2 fork
+	// if nothing found locally, recurse even if it's consul domain
+	// note: this behavior is a very specific use-case I need
+	if m.ForceRecursor {
+		d.logger.Debug("dns: williamchanrico/consul fork: force recursor")
+		d.handleRecurse(resp, req)
+		return
 	}
 
 	setEDNS(req, m, ecsGlobal)
@@ -1142,17 +1154,26 @@ func (d *DNSServer) lookupServiceNodes(cfg *dnsConfig, datacenter, service, tag 
 
 // serviceLookup is used to handle a service query
 func (d *DNSServer) serviceLookup(cfg *dnsConfig, network, datacenter, service, tag string, entMeta *structs.EnterpriseMeta, connect bool, req, resp *dns.Msg, maxRecursionLevel int) {
-	out, err := d.lookupServiceNodes(cfg, datacenter, service, tag, entMeta, connect, maxRecursionLevel)
-	if err != nil {
-		d.logger.Error("rpc error", "error", err)
-		resp.SetRcode(req, dns.RcodeServerFailure)
-		return
+	var err error
+
+	// williamchanrico/consul@v1.7.2 fork
+	// if DC is not the local (specified in config), we will try recursor
+	// because we never join consul DC, don't bother calling lookupServiceNodes RPC
+	out := structs.IndexedCheckServiceNodes{}
+	if datacenter == d.agent.config.Datacenter {
+		out, err = d.lookupServiceNodes(cfg, datacenter, service, tag, entMeta, connect, maxRecursionLevel)
+		if err != nil {
+			d.logger.Error("rpc error", "error", err)
+			resp.SetRcode(req, dns.RcodeServerFailure)
+			return
+		}
 	}
 
 	// If we have no nodes, return not found!
 	if len(out.Nodes) == 0 {
-		d.addSOA(cfg, resp)
-		resp.SetRcode(req, dns.RcodeNameError)
+		resp.ForceRecursor = true
+		// d.addSOA(cfg, resp)
+		// resp.SetRcode(req, dns.RcodeNameError)
 		return
 	}
 
